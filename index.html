@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SPACE STRETCH 🚀</title>
+    <style>
+        :root { --neon: #00f2ff; --pink: #ff007a; --dark: #050510; }
+        body { 
+            margin: 0; background: var(--dark); color: white; 
+            font-family: 'Courier New', monospace; overflow: hidden;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        canvas { display: block; background: radial-gradient(circle, #101035, #050510); }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; background: rgba(0,0,0,0.8);
+            z-index: 100; transition: opacity 0.5s;
+        }
+        .hud {
+            position: absolute; top: 20px; width: 90%;
+            display: flex; justify-content: space-between;
+            font-size: 1.2rem; text-shadow: 0 0 10px var(--neon);
+            pointer-events: none; z-index: 50;
+        }
+        .btn-play {
+            padding: 20px 50px; font-size: 1.5rem; font-weight: bold;
+            background: var(--pink); border: none; color: white;
+            border-radius: 10px; cursor: pointer; box-shadow: 0 0 20px var(--pink);
+        }
+        #instructions { margin: 20px 0; text-align: center; color: var(--neon); line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <div>SCORE: <span id="score">0</span></div>
+        <div>BEST: <span id="highscore">0</span></div>
+    </div>
+
+    <div id="menu" class="overlay">
+        <h1 style="font-size: 3rem; margin: 0; text-align: center;">SPACE STRETCH</h1>
+        <p id="instructions">Mueve el móvil para esquivar<br>o usa las FLECHAS en PC</p>
+        <button id="startBtn" class="btn-play">¡DESPEGAR!</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highscoreEl = document.getElementById('highscore');
+        const menu = document.getElementById('menu');
+        const startBtn = document.getElementById('startBtn');
+        
+        let player = { x: 0, y: 0, radius: 15 };
+        let obstacles = [];
+        let score = 0;
+        let gameActive = false;
+        let speedMultiplier = 1;
+        let animationId;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - 100;
+            if(!gameActive) player.x = canvas.width / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        highscoreEl.innerText = localStorage.getItem('spaceStretchScore') || 0;
+
+        // Función de inicio corregida
+        function startGame() {
+            menu.style.opacity = '0';
+            setTimeout(() => menu.style.display = 'none', 500);
+            
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().catch(console.error);
+            }
+
+            resetGame();
+            gameActive = true;
+            animate();
+        }
+
+        // Event Listener profesional en lugar de onclick en HTML
+        startBtn.addEventListener('click', startGame);
+
+        function resetGame() {
+            score = 0;
+            obstacles = [];
+            speedMultiplier = 1;
+            player.x = canvas.width / 2;
+            scoreEl.innerText = "0";
+            if(animationId) cancelAnimationFrame(animationId);
+        }
+
+        // Controles Móvil
+        window.addEventListener('deviceorientation', (e) => {
+            if(!gameActive || e.gamma === null) return;
+            // Sensibilidad ajustada para oficina (no hay que girar tanto)
+            let targetX = (canvas.width / 2) + (e.gamma * 8);
+            player.x = targetX;
+        });
+
+        // Controles PC
+        window.addEventListener('keydown', (e) => {
+            if(!gameActive) return;
+            if(e.key === "ArrowLeft") player.x -= 40;
+            if(e.key === "ArrowRight") player.x += 40;
+            // Mantener dentro de pantalla
+            player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
+        });
+
+        function animate() {
+            if(!gameActive) return;
+            ctx.fillStyle = 'rgba(5, 5, 16, 0.3)'; // Efecto estela
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Jugador
+            ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+            ctx.fillStyle = '#00f2ff';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Generar obstáculos
+            if(Math.random() < 0.04 * speedMultiplier) {
+                obstacles.push({
+                    x: Math.random() * canvas.width,
+                    y: -50,
+                    size: 25 + Math.random() * 20,
+                    speed: 4 + Math.random() * 4
+                });
+            }
+
+            // Procesar obstáculos
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let o = obstacles[i];
+                o.y += o.speed * speedMultiplier;
+
+                ctx.shadowBlur = 10; ctx.shadowColor = '#ff007a';
+                ctx.fillStyle = '#ff007a';
+                ctx.fillRect(o.x, o.y, o.size, o.size);
+
+                // Colisión (Círculo vs Cuadrado simplificado)
+                if (player.x + player.radius > o.x && 
+                    player.x - player.radius < o.x + o.size &&
+                    player.y + player.radius > o.y && 
+                    player.y - player.radius < o.y + o.size) {
+                    gameOver();
+                }
+
+                if(o.y > canvas.height) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    scoreEl.innerText = score;
+                    speedMultiplier += 0.003;
+                }
+            }
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            cancelAnimationFrame(animationId);
+            const best = localStorage.getItem('spaceStretchScore') || 0;
+            if(score > best) {
+                localStorage.setItem('spaceStretchScore', score);
+                highscoreEl.innerText = score;
+            }
+            
+            setTimeout(() => {
+                alert("GAME OVER\nPuntaje: " + score);
+                menu.style.display = 'flex';
+                menu.style.opacity = '1';
+            }, 100);
+        }
+    </script>
+</body>
+</html>
