@@ -1,15 +1,18 @@
 {
-  "name": "Pausa Activa Pro",
-  "short_name": "PausaPWA",
-  "start_url": "index.html",
+  "name": "Space Stretch Ultra",
+  "short_name": "SpaceStretch",
+  "description": "Esquiva obstáculos en el espacio usando el acelerómetro.",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#00ff88",
+  "background_color": "#020205",
+  "theme_color": "#ff007a",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "https://flaticon.com",
+      "src": "img/pwa-icon-192.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
