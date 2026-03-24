@@ -3,33 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SPACE STRETCH 🚀</title>
+    <title>SPACE STRETCH 🚀 PRO</title>
     <style>
         :root { --neon: #00f2ff; --pink: #ff007a; --dark: #050510; }
         body { 
             margin: 0; background: var(--dark); color: white; 
             font-family: 'Courier New', monospace; overflow: hidden;
-            display: flex; flex-direction: column; align-items: center;
+            touch-action: none; /* Evita gestos indeseados en móvil */
         }
-        canvas { display: block; background: radial-gradient(circle, #101035, #050510); }
+        canvas { 
+            display: block; 
+            background: linear-gradient(180deg, #020205 0%, #0a0a2a 100%); 
+        }
         .overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; align-items: center;
-            justify-content: center; background: rgba(0,0,0,0.8);
-            z-index: 100; transition: opacity 0.5s;
+            justify-content: center; background: rgba(2, 2, 5, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 100; transition: opacity 0.4s ease;
         }
         .hud {
-            position: absolute; top: 20px; width: 90%;
+            position: absolute; top: 20px; left: 5%; width: 90%;
             display: flex; justify-content: space-between;
-            font-size: 1.2rem; text-shadow: 0 0 10px var(--neon);
+            font-size: 1.2rem; font-weight: bold; text-shadow: 0 0 10px var(--neon);
             pointer-events: none; z-index: 50;
         }
         .btn-play {
-            padding: 20px 50px; font-size: 1.5rem; font-weight: bold;
-            background: var(--pink); border: none; color: white;
-            border-radius: 10px; cursor: pointer; box-shadow: 0 0 20px var(--pink);
+            padding: 15px 40px; font-size: 1.5rem; font-family: inherit; font-weight: bold;
+            background: transparent; color: var(--neon);
+            border: 2px solid var(--neon); border-radius: 8px;
+            cursor: pointer; box-shadow: 0 0 15px rgba(0, 242, 255, 0.4), inset 0 0 10px rgba(0, 242, 255, 0.2);
+            text-transform: uppercase; transition: all 0.2s;
         }
-        #instructions { margin: 20px 0; text-align: center; color: var(--neon); line-height: 1.5; }
+        .btn-play:hover { background: var(--neon); color: var(--dark); box-shadow: 0 0 30px var(--neon); }
+        .btn-play:active { transform: scale(0.95); }
+        #title { font-size: 3.5rem; margin-bottom: 10px; text-shadow: 0 0 20px var(--pink); color: var(--pink); text-align: center; }
+        #instructions { margin-bottom: 40px; text-align: center; color: #aaa; line-height: 1.6; font-size: 0.9rem;}
+        .hidden { pointer-events: none; opacity: 0; }
     </style>
 </head>
 <body>
@@ -40,9 +50,9 @@
     </div>
 
     <div id="menu" class="overlay">
-        <h1 style="font-size: 3rem; margin: 0; text-align: center;">SPACE STRETCH</h1>
-        <p id="instructions">Mueve el móvil para esquivar<br>o usa las FLECHAS en PC</p>
-        <button id="startBtn" class="btn-play">¡DESPEGAR!</button>
+        <h1 id="title">SPACE<br>STRETCH</h1>
+        <p id="instructions">Inclina el móvil para moverte<br>← TECLAS → en PC</p>
+        <button id="startBtn" class="btn-play">Despegar</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -55,130 +65,239 @@
         const menu = document.getElementById('menu');
         const startBtn = document.getElementById('startBtn');
         
-        let player = { x: 0, y: 0, radius: 15 };
-        let obstacles = [];
-        let score = 0;
+        // Estado del juego
         let gameActive = false;
+        let score = 0;
         let speedMultiplier = 1;
         let animationId;
+        
+        // Entidades
+        let player = { x: 0, y: 0, vx: 0, radius: 12 };
+        let obstacles = [];
+        let particles = [];
+        let stars = [];
+        
+        // Controles
+        let keys = { left: false, right: false };
+        let tilt = 0;
 
+        // --- INICIALIZACIÓN Y RESPONSIVE ---
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            player.y = canvas.height - 100;
+            player.y = canvas.height - 120;
             if(!gameActive) player.x = canvas.width / 2;
+            initStars();
         }
         window.addEventListener('resize', resize);
+        
+        function initStars() {
+            stars = [];
+            for(let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2,
+                    speed: Math.random() * 3 + 0.5
+                });
+            }
+        }
         resize();
-
         highscoreEl.innerText = localStorage.getItem('spaceStretchScore') || 0;
 
-        // Función de inicio corregida
-        function startGame() {
-            menu.style.opacity = '0';
-            setTimeout(() => menu.style.display = 'none', 500);
-            
+        // --- CONTROLES ---
+        window.addEventListener('keydown', (e) => {
+            if(e.key === "ArrowLeft") keys.left = true;
+            if(e.key === "ArrowRight") keys.right = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if(e.key === "ArrowLeft") keys.left = false;
+            if(e.key === "ArrowRight") keys.right = false;
+        });
+
+        // Evento del Acelerómetro
+        function handleOrientation(e) {
+            if (!gameActive || e.gamma === null) return;
+            // Limitamos y suavizamos la inclinación (-45 a 45 grados es suficiente)
+            let rawTilt = Math.max(-45, Math.min(45, e.gamma));
+            tilt = rawTilt;
+        }
+
+        // --- LÓGICA DE INICIO ---
+        startBtn.addEventListener('click', async () => {
+            // Permisos de iOS para el acelerómetro
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().catch(console.error);
+                try {
+                    const permissionState = await DeviceOrientationEvent.requestPermission();
+                    if (permissionState === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                    } else {
+                        alert("Necesitas dar permiso a los sensores para jugar en móvil.");
+                    }
+                } catch (error) {
+                    console.error("Error al pedir permisos:", error);
+                }
+            } else {
+                // Dispositivos no-iOS o sin restricciones
+                window.addEventListener('deviceorientation', handleOrientation);
             }
 
+            menu.classList.add('hidden');
             resetGame();
             gameActive = true;
             animate();
-        }
-
-        // Event Listener profesional en lugar de onclick en HTML
-        startBtn.addEventListener('click', startGame);
+        });
 
         function resetGame() {
             score = 0;
             obstacles = [];
+            particles = [];
             speedMultiplier = 1;
             player.x = canvas.width / 2;
+            player.vx = 0;
+            tilt = 0;
             scoreEl.innerText = "0";
             if(animationId) cancelAnimationFrame(animationId);
         }
 
-        // Controles Móvil
-        window.addEventListener('deviceorientation', (e) => {
-            if(!gameActive || e.gamma === null) return;
-            // Sensibilidad ajustada para oficina (no hay que girar tanto)
-            let targetX = (canvas.width / 2) + (e.gamma * 8);
-            player.x = targetX;
-        });
+        // --- EFECTOS (PARTÍCULAS) ---
+        function createExplosion(x, y, color) {
+            for(let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1, color: color
+                });
+            }
+        }
 
-        // Controles PC
-        window.addEventListener('keydown', (e) => {
-            if(!gameActive) return;
-            if(e.key === "ArrowLeft") player.x -= 40;
-            if(e.key === "ArrowRight") player.x += 40;
-            // Mantener dentro de pantalla
-            player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
-        });
-
+        // --- BUCLE PRINCIPAL ---
         function animate() {
             if(!gameActive) return;
-            ctx.fillStyle = 'rgba(5, 5, 16, 0.3)'; // Efecto estela
+            
+            // Limpiar pantalla con estela suave
+            ctx.fillStyle = 'rgba(2, 2, 5, 0.4)'; 
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Jugador
-            ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
-            ctx.fillStyle = '#00f2ff';
+            // Dibujar estrellas (Efecto Parallax)
+            ctx.fillStyle = 'white';
+            stars.forEach(s => {
+                s.y += s.speed * speedMultiplier;
+                if(s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+                ctx.globalAlpha = s.size / 2;
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // --- FÍSICA DEL JUGADOR ---
+            // Aceleración por teclado
+            if (keys.left) player.vx -= 1.5;
+            if (keys.right) player.vx += 1.5;
+            
+            // Aceleración por móvil (si hay inclinación)
+            if (tilt !== 0) {
+                player.vx += tilt * 0.08; // Sensibilidad del móvil
+            }
+
+            // Aplicar fricción (inercia)
+            player.vx *= 0.88; 
+            player.x += player.vx;
+
+            // Limitar bordes (rebotar suavemente)
+            if(player.x < player.radius) { player.x = player.radius; player.vx *= -0.5; }
+            if(player.x > canvas.width - player.radius) { player.x = canvas.width - player.radius; player.vx *= -0.5; }
+
+            // Dibujar Jugador
+            ctx.shadowBlur = 20; ctx.shadowColor = 'var(--neon)';
+            ctx.fillStyle = 'var(--neon)';
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
 
-            // Generar obstáculos
-            if(Math.random() < 0.04 * speedMultiplier) {
+            // --- OBSTÁCULOS ---
+            if(Math.random() < 0.05 * speedMultiplier) {
+                let size = 20 + Math.random() * 30;
                 obstacles.push({
-                    x: Math.random() * canvas.width,
-                    y: -50,
-                    size: 25 + Math.random() * 20,
-                    speed: 4 + Math.random() * 4
+                    x: Math.random() * (canvas.width - size),
+                    y: -100,
+                    width: size,
+                    height: size * (Math.random() > 0.5 ? 2 : 1), // Algunos son rectángulos largos
+                    speed: 5 + Math.random() * 5
                 });
             }
 
-            // Procesar obstáculos
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 let o = obstacles[i];
                 o.y += o.speed * speedMultiplier;
 
-                ctx.shadowBlur = 10; ctx.shadowColor = '#ff007a';
-                ctx.fillStyle = '#ff007a';
-                ctx.fillRect(o.x, o.y, o.size, o.size);
+                ctx.shadowBlur = 15; ctx.shadowColor = 'var(--pink)';
+                ctx.fillStyle = 'var(--pink)';
+                // Bordes redondeados para estética Pro
+                ctx.beginPath();
+                ctx.roundRect(o.x, o.y, o.width, o.height, 5);
+                ctx.fill();
+                ctx.shadowBlur = 0;
 
-                // Colisión (Círculo vs Cuadrado simplificado)
-                if (player.x + player.radius > o.x && 
-                    player.x - player.radius < o.x + o.size &&
-                    player.y + player.radius > o.y && 
-                    player.y - player.radius < o.y + o.size) {
+                // Colisión Avanzada (Círculo vs Rectángulo)
+                let testX = player.x;
+                let testY = player.y;
+                
+                if (player.x < o.x) testX = o.x; else if (player.x > o.x + o.width) testX = o.x + o.width;
+                if (player.y < o.y) testY = o.y; else if (player.y > o.y + o.height) testY = o.y + o.height;
+
+                let distX = player.x - testX;
+                let distY = player.y - testY;
+                let distance = Math.sqrt((distX*distX) + (distY*distY));
+
+                if (distance <= player.radius) {
+                    createExplosion(player.x, player.y, '#00f2ff');
+                    createExplosion(o.x + o.width/2, o.y + o.height/2, '#ff007a');
                     gameOver();
                 }
 
+                // Puntaje
                 if(o.y > canvas.height) {
                     obstacles.splice(i, 1);
                     score += 10;
                     scoreEl.innerText = score;
-                    speedMultiplier += 0.003;
+                    speedMultiplier += 0.005; // Aumenta dificultad más progresivamente
                 }
             }
-            animationId = requestAnimationFrame(animate);
+
+            // --- PARTÍCULAS ---
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                if(p.life <= 0) { particles.splice(i, 1); continue; }
+                
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            if(gameActive) animationId = requestAnimationFrame(animate);
         }
 
+        // --- FIN DEL JUEGO ---
         function gameOver() {
             gameActive = false;
-            cancelAnimationFrame(animationId);
-            const best = localStorage.getItem('spaceStretchScore') || 0;
+            // Dejar correr la animación un par de frames más para ver la explosión
+            setTimeout(() => cancelAnimationFrame(animationId), 50); 
+            
+            const best = parseInt(localStorage.getItem('spaceStretchScore') || 0);
             if(score > best) {
                 localStorage.setItem('spaceStretchScore', score);
                 highscoreEl.innerText = score;
             }
             
             setTimeout(() => {
-                alert("GAME OVER\nPuntaje: " + score);
-                menu.style.display = 'flex';
-                menu.style.opacity = '1';
-            }, 100);
+                document.getElementById('title').innerHTML = "CRASHED!<br><span style='font-size: 1.5rem; color: white;'>SCORE: " + score + "</span>";
+                startBtn.innerText = "Reintentar";
+                menu.classList.remove('hidden');
+            }, 1000); // Pausa dramática antes de mostrar el menú
         }
     </script>
 </body>
